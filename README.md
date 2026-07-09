@@ -9,16 +9,90 @@
 <!-- preprint/venue badge — add once the RoR paper is posted/accepted:
      [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX) -->
 
-> Replay code for **“Resample or Reroute? Budget-Aware Test-Time Model Selection
-> for LLMs”** (preprint forthcoming). Given a per-query budget and an *imperfect*
-> verifier, RoR spends each unit of budget on whichever action — **resampling** a
-> committed model or **rerouting** to another — has the highest estimated marginal
-> correctness per unit cost. Every experiment is an **offline CPU replay** on
-> precomputed multi-draw correctness tensors: no model inference, no API key.
+> Reproducibility companion for the paper **“Resample or Reroute? Budget-Aware
+> Test-Time Model Selection for Large Language Models”** (preprint forthcoming).
+> **Open-weight, CPU-only, no API key** — every experiment is an offline replay
+> on precomputed multi-draw correctness tensors: no model inference, no closed
+> endpoint.
 >
-> This is the applied companion to *“How Much of the Routing Gap Is Real?”*
-> ([arXiv:2607.03436](https://arxiv.org/abs/2607.03436)), which proves the
-> recoverability asymmetry RoR exploits and releases the generation protocol.
+> **The question in one line.** Given a fixed per-query cost budget and an
+> *imperfect* verifier — the conditions a real serving system actually faces —
+> should the system **resample** the model it already committed to, or
+> **reroute** to a different (possibly costlier) one? This repo measures how a
+> policy that decides this *per query* compares against the standard baselines,
+> and is honest about where the advantage holds and where it doesn't.
+
+## TL;DR
+- **RoR** spends each unit of budget on whichever action — one more draw of the
+  committed model, or the first draw of a new one — has the highest **estimated
+  marginal correctness per unit cost**.
+- Across **four benchmarks** (GSM8K, MATH-500, GPQA-Diamond, HumanEval+) with an
+  **11-model open-weight pool**, RoR traces a **favorable cost–quality Pareto
+  front** against single-route, one-commit-router, budget-aware best-of-$K$,
+  cascade, and random allocation.
+- The win is **regime-dependent** and **verifier-gated** — and we mark exactly
+  where it shrinks, inverts, or is matched by simpler baselines (see *Results*).
+
+## The question — why this exists (前因)
+Model **routing** sends each query to the cheapest model that can answer it,
+motivated by the large reported gap between a deployed router and a per-instance
+*oracle* that, in hindsight, always picks a correct model. The companion
+analysis ([arXiv:2607.03436](https://arxiv.org/abs/2607.03436)) shows two things:
+(1) part of that gap is **single-draw label noise** that no single-commit router
+can capture; and (2) the *recoverable* part can be reached **without any router**
+— by test-time **resampling** (best-of-$K$ on one model) — but only under an
+idealized oracle equipped with correctness labels and an unbounded budget.
+
+A deployed system has neither. It has a **fixed per-query budget** and an
+**imperfect verifier**. That leaves the operational choice this repo studies:
+spend the next unit of budget **resampling** the committed model, or
+**rerouting** to another?
+
+## The policy — how RoR decides (方法)
+For the current query, RoR keeps a running estimate of each model's success
+probability, $\hat p = (s\bar p + w)/(s + n)$ (prior mean $\bar p$ from offline
+calibration; $w$ verified-correct out of $n$ draws so far), and each step takes
+the affordable action that maximizes $\hat p / \text{cost}$ — resample a used
+model, or try a new one. Both actions are scored on **one axis**, which is what
+makes them competing uses of a single budget. The behavior is grounded in the
+**recoverability asymmetry** the companion proves (a UCB variant and a
+non-deployable oracle-allocation ceiling are included for reference).
+
+## Results
+Accuracy at a matched mid budget (point nearest mean cost 26; cost =
+parameter-size proxy; `acc` shown, with RoR's mean cost where informative):
+
+| Policy | GSM8K | MATH-500 | GPQA | HumanEval+ |
+|---|---|---|---|---|
+| **Resample-or-Reroute (ours)** | **0.993** @9.2 | **0.887** @26.4 | **0.968** @25.9 | 0.952 @20.5 |
+| budget-aware best-of-$K$ | 0.983 | 0.867 | 0.861 | 0.852 |
+| cascade (FrugalGPT-style) | 0.992 | 0.847 | 0.926 | 0.952 |
+| random allocation | 0.992 | 0.846 | 0.706 | 0.959 |
+| single-route (best model) | 0.966 @32 | 0.776 @32 | 0.551 @8 | 0.858 @32 |
+| oracle allocation (ceiling) | 1.000 | 0.944 | 1.000 | 0.988 |
+
+**1 — A favorable Pareto front.** RoR dominates or matches every budget-scalable
+baseline and overtakes the single-commit baselines once the budget affords a
+second draw.
+
+**2 — Where it wins depends on the pool.** On **saturated** GSM8K the win is
+*cost*: 0.993 at 24–34% lower cost than cascade / best-of-$K$, and 3.5× cheaper
+than single-routing the best model. On **heterogeneous** GPQA-Diamond, where the
+pool's specialists genuinely differ, *rerouting* matters most — **+10.7 accuracy
+points** over best-of-$K$ at matched cost. On **code** (HumanEval+) it matches
+the best single model's fixed-budget accuracy at **~3.2× lower cost** in the
+low-budget regime.
+
+**3 — The gains are verifier-gated (the honest part).** They shrink as the
+verifier degrades, and can **invert** on low-signal verifiers — e.g. self-
+consistency on 4-way multiple choice (GPQA), where two wrong draws easily agree.
+Where a real *partial* verifier exists — base-test suites for code, measured
+false-accept ~1% — RoR stays essentially at its perfect-verifier ceiling. And on
+near-saturated benchmarks under a reliable verifier, undirected baselines
+(cascade, random) **converge to RoR at high budget** (see the HumanEval+ column
+above): RoR's edge lives in the cost-constrained middle, not in a high-budget
+ceiling. Robustness replays under a real provider price vector and a label-free
+agreement verifier delineate where these conclusions carry over.
 
 ## Data
 Replays read the correctness tensors produced by the sibling repo
