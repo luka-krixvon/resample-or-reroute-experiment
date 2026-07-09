@@ -57,8 +57,8 @@ def nearest(pts, target):
 
 
 def fig_pareto():
-    fig, axes = plt.subplots(1, 4, figsize=(12.8, 3.1))
-    for ax, (bench, title) in zip(axes, BENCHES):
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7.2))
+    for ax, (bench, title) in zip(axes.flat, BENCHES):
         by = load(bench)
         # oracle ceiling as a horizontal reference line (its cost saturates ~7,
         # so as a curve it collapses to an invisible point)
@@ -80,12 +80,14 @@ def fig_pareto():
             c, a = by[pol][0]
             ax.plot([c], [a], marker=mk, color=color, ms=9 if mk == "*" else 6,
                     ls="", label=name, zorder=4)
-        ax.set_title(title)
-        ax.set_xlabel("mean cost per query (size proxy)")
+        ax.set_title(title, fontsize=13)
+        ax.set_xlabel("mean cost per query (size proxy)", fontsize=11.5)
+        ax.tick_params(labelsize=10.5)
         ax.grid(alpha=0.3)
-    axes[0].set_ylabel("accuracy")
-    handles, labels = axes[2].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=7.5,
+    for ax in axes[:, 0]:
+        ax.set_ylabel("accuracy", fontsize=12)
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=10.5,
                frameon=True, facecolor="white", framealpha=1.0,
                edgecolor="#D9DCDF", bbox_to_anchor=(0.5, -0.04))
     fig.tight_layout(rect=(0, 0.06, 1, 1))

@@ -163,7 +163,7 @@ def fig_pareto_q06():
     import matplotlib.pyplot as plt
     GREY, BLUE, AMB = "#8A8F94", "#3B6EA5", "#C0873E"
     plt.rcParams.update({"font.family": "serif", "mathtext.fontset": "stix",
-                         "font.size": 9, "axes.titlesize": 9.5})
+                         "font.size": 12, "axes.titlesize": 13})
     titles = {"gsm8k": "GSM8K", "math500": "MATH-500", "gpqa": "GPQA-Diamond", "humanevalplus": "HumanEval+"}
     styles = {
         "resample_or_reroute": ("RoR (ours)", BLUE, "-", "o", True),
@@ -171,8 +171,8 @@ def fig_pareto_q06():
         "frugal_cascade": ("cascade", GREY, "-", "D", False),
         "random_alloc": ("random allocation", "#B7BCC1", "-", "v", False),
     }
-    fig, axes = plt.subplots(1, 4, figsize=(12.8, 3.0))
-    for ax, bench in zip(axes, BENCHES):
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7.2))
+    for ax, bench in zip(axes.flat, BENCHES):
         by = {}
         for r in csv.DictReader(open(os.path.join(RES, f"pareto_{bench}_q0.6.csv"))):
             by.setdefault(r["policy"], []).append(
@@ -187,9 +187,10 @@ def fig_pareto_q06():
         ax.set_title(titles[bench])
         ax.set_xlabel("mean cost per query (size proxy)")
         ax.grid(alpha=0.3)
-    axes[0].set_ylabel("accuracy")
-    handles, labels = axes[2].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=8,
+    for ax in axes[:, 0]:
+        ax.set_ylabel("accuracy")
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=10.5,
                frameon=True, facecolor="white", framealpha=1.0,
                edgecolor="#D9DCDF", bbox_to_anchor=(0.5, -0.05))
     fig.tight_layout(rect=(0, 0.05, 1, 1))
