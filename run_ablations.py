@@ -1,0 +1,208 @@
+"""Supplementary ablations for the paper (CPU replay on existing tensors).
+
+Produces (into results/ and ../paper/):
+  results/ablation_prior.csv     prior_strength in {0.5, 2, 8}  @ mid budget
+  results/ablation_split.csv     train fraction in {0.3, 0.5, 0.7} @ mid budget
+  results/stability.csv          mean/std of accuracy across the 20 orderings
+  ../paper/tab_ablations.tex     generated LaTeX table (prior + split)
+  ../paper/figs/fig_pareto_q06.pdf  full cost-quality Pareto at verifier q=0.6
+
+Usage:  python run_ablations.py
+"""
+import csv
+import os
+
+import numpy as np
+
+from data import load_bench
+from policies import POLICIES, resample_or_reroute
+from verifier import verifier_expected_correct
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PAPER = os.path.join(HERE, "..", "paper_canonical")
+RES = os.path.join(HERE, "results")
+os.makedirs(RES, exist_ok=True)
+
+BENCHES = ["gsm8k", "math500", "gpqa", "humanevalplus"]
+MID_BUDGET = 26.0
+TRIALS = 20
+SEED = 0
+
+
+def compute_priors(b_train):
+    succ = b_train.sum(axis=(0, 2)).astype(float)
+    total = b_train.shape[0] * b_train.shape[2]
+    return succ + 1.0, (total - succ) + 1.0, int(np.argmax(b_train.mean(axis=(0, 2))))
+
+
+def run_policy_once(policy, d, te, a0, b0, best, budget, trial_seed,
+                    quality=1.0, prior_strength=None):
+    b, costs, qr = d["b"], d["costs"], d["q_router"]
+    perfect = quality >= 1.0
+    trng = np.random.default_rng(trial_seed)
+    accs, cs = [], []
+    for i in te:
+        ctx = {"a0": a0, "b0": b0, "best_acc_model": best,
+               "q_router_i": float(qr[i]), "stop_on_correct": perfect}
+        if prior_strength is None:
+            drawn, cost = policy(b[i], costs, budget, ctx, trng)
+        else:
+            drawn, cost = resample_or_reroute(b[i], costs, budget, ctx, trng,
+                                              prior_strength=prior_strength)
+        accs.append(1.0 if (perfect and any(c == 1 for c in drawn))
+                    else (verifier_expected_correct(drawn, quality) if not perfect
+                          else 0.0))
+        cs.append(cost)
+    return float(np.mean(accs)), float(np.mean(cs))
+
+
+def split(d, frac, seed=SEED):
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(d["N"])
+    ntr = int(d["N"] * frac)
+    return idx[:ntr], idx[ntr:]
+
+
+def ablation_prior():
+    rows = []
+    for bench in BENCHES:
+        d = load_bench(bench)
+        tr, te = split(d, 0.5)
+        a0, b0, best = compute_priors(d["b"][tr])
+        for ps in [0.5, 2.0, 8.0]:
+            accs = [run_policy_once(None, d, te, a0, b0, best, MID_BUDGET,
+                                    SEED * 100003 + t, prior_strength=ps)[0]
+                    for t in range(TRIALS)]
+            rows.append({"bench": bench, "prior_strength": ps,
+                         "accuracy": float(np.mean(accs))})
+            print(f"prior {bench} ps={ps}: {np.mean(accs):.3f}")
+    with open(os.path.join(RES, "ablation_prior.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["bench", "prior_strength", "accuracy"])
+        w.writeheader(); w.writerows(rows)
+    return rows
+
+
+def ablation_split():
+    rows = []
+    for bench in BENCHES:
+        d = load_bench(bench)
+        for frac in [0.3, 0.5, 0.7]:
+            tr, te = split(d, frac)
+            a0, b0, best = compute_priors(d["b"][tr])
+            accs = [run_policy_once(None, d, te, a0, b0, best, MID_BUDGET,
+                                    SEED * 100003 + t, prior_strength=2.0)[0]
+                    for t in range(TRIALS)]
+            rows.append({"bench": bench, "train_frac": frac,
+                         "accuracy": float(np.mean(accs))})
+            print(f"split {bench} frac={frac}: {np.mean(accs):.3f}")
+    with open(os.path.join(RES, "ablation_split.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["bench", "train_frac", "accuracy"])
+        w.writeheader(); w.writerows(rows)
+    return rows
+
+
+def stability():
+    rows = []
+    for bench in BENCHES:
+        d = load_bench(bench)
+        tr, te = split(d, 0.5)
+        a0, b0, best = compute_priors(d["b"][tr])
+        accs = [run_policy_once(None, d, te, a0, b0, best, MID_BUDGET,
+                                SEED * 100003 + t, prior_strength=2.0)[0]
+                for t in range(TRIALS)]
+        rows.append({"bench": bench, "mean": float(np.mean(accs)),
+                     "std": float(np.std(accs))})
+        print(f"stability {bench}: {np.mean(accs):.4f} +- {np.std(accs):.4f}")
+    with open(os.path.join(RES, "stability.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["bench", "mean", "std"])
+        w.writeheader(); w.writerows(rows)
+    return rows
+
+
+def tab_ablations(prior_rows, split_rows, stab_rows):
+    def acc(rows, bench, key, val):
+        for r in rows:
+            if r["bench"] == bench and abs(r[key] - val) < 1e-9:
+                return f"{r['accuracy']:.3f}"
+        return "--"
+    lines = [
+        "% AUTO-GENERATED by experiments/run_ablations.py -- do not hand-edit.",
+        "\\begin{table}[t]\\centering",
+        "\\caption{Sensitivity of the RoR policy at a fixed per-query budget"
+        " $B=26$ (early stopping spends only part of it, so this is the"
+        " low-budget operating point of Table~\\ref{tab:results}): prior"
+        " pseudo-count $s$, train fraction used to calibrate offline priors, and"
+        " stability (mean $\\pm$ std over the $20$ draw orderings).}",
+        "\\label{tab:ablations}",
+        "\\resizebox{\\columnwidth}{!}{%",
+        "\\begin{tabular}{lcccc}\\toprule",
+        " & GSM8K & MATH-500 & GPQA & HumanEval+ \\\\ \\midrule",
+    ]
+    for ps in [0.5, 2.0, 8.0]:
+        cells = [acc(prior_rows, b, "prior_strength", ps) for b in BENCHES]
+        tag = " (default)" if ps == 2.0 else ""
+        lines.append(f"prior $s={ps:g}${tag} & " + " & ".join(cells) + " \\\\")
+    lines.append("\\midrule")
+    for fr in [0.3, 0.5, 0.7]:
+        cells = [acc(split_rows, b, "train_frac", fr) for b in BENCHES]
+        tag = " (default)" if fr == 0.5 else ""
+        lines.append(f"train frac.\\ ${fr:g}${tag} & " + " & ".join(cells) + " \\\\")
+    lines.append("\\midrule")
+    cells = [f"{r['mean']:.3f} $\\pm$ {r['std']:.3f}"
+             for b in BENCHES for r in stab_rows if r["bench"] == b]
+    lines.append("mean $\\pm$ std (orderings) & " + " & ".join(cells) + " \\\\")
+    lines += ["\\bottomrule\\end{tabular}}\\end{table}"]
+    out = os.path.join(PAPER, "tab_ablations.tex")
+    open(out, "w").write("\n".join(lines) + "\n")
+    print("wrote tab_ablations.tex")
+
+
+def fig_pareto_q06():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    GREY, BLUE, AMB = "#8A8F94", "#3B6EA5", "#C0873E"
+    plt.rcParams.update({"font.family": "serif", "mathtext.fontset": "stix",
+                         "font.size": 9, "axes.titlesize": 9.5})
+    titles = {"gsm8k": "GSM8K", "math500": "MATH-500", "gpqa": "GPQA-Diamond", "humanevalplus": "HumanEval+"}
+    styles = {
+        "resample_or_reroute": ("RoR (ours)", BLUE, "-", "o", True),
+        "fixed_best_of_k": ("budget-aware best-of-$K$", "#555a60", "-", "s", False),
+        "frugal_cascade": ("cascade", GREY, "-", "D", False),
+        "random_alloc": ("random allocation", "#B7BCC1", "-", "v", False),
+    }
+    fig, axes = plt.subplots(1, 4, figsize=(12.8, 3.0))
+    for ax, bench in zip(axes, BENCHES):
+        by = {}
+        for r in csv.DictReader(open(os.path.join(RES, f"pareto_{bench}_q0.6.csv"))):
+            by.setdefault(r["policy"], []).append(
+                (float(r["mean_cost"]), float(r["accuracy"])))
+        for pol, (name, color, ls, mk, is_m) in styles.items():
+            if pol not in by:
+                continue
+            xs, ys = zip(*sorted(by[pol]))
+            ax.plot(xs, ys, ls=ls, marker=mk, color=color,
+                    lw=2.2 if is_m else 1.2, ms=4.5 if is_m else 3.5,
+                    label=name, zorder=5 if is_m else 3)
+        ax.set_title(titles[bench])
+        ax.set_xlabel("mean cost per query (size proxy)")
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("accuracy")
+    handles, labels = axes[2].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=8,
+               frameon=True, facecolor="white", framealpha=1.0,
+               edgecolor="#D9DCDF", bbox_to_anchor=(0.5, -0.05))
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(PAPER, "figs", f"fig_pareto_q06.{ext}"),
+                    bbox_inches="tight", dpi=200)
+    plt.close(fig)
+    print("wrote figs/fig_pareto_q06.pdf")
+
+
+if __name__ == "__main__":
+    pr = ablation_prior()
+    sp = ablation_split()
+    st = stability()
+    tab_ablations(pr, sp, st)
+    fig_pareto_q06()

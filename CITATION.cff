@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the RoR paper (preprint forthcoming); meanwhile cite the companion analysis (arXiv:2607.03436)."
+title: "Resample or Reroute? Budget-Aware Test-Time Model Selection for Large Language Models"
+type: software
+authors:
+  - family-names: Chen
+    given-names: Teng-Ruei
+    affiliation: "Institute of Bioinformatics and Systems Biology, National Yang Ming Chiao Tung University, Hsinchu 300, Taiwan; and Krixvon AI, Taiwan"
+    email: luka@krixvon.com
+  - family-names: Lin
+    given-names: Chun-Cheng
+    affiliation: "Department of Industrial Engineering and Management, National Yang Ming Chiao Tung University, Hsinchu, Taiwan"
+    email: cclin321@nycu.edu.tw
+repository-code: "https://github.com/luka-krixvon/resample-or-reroute-experiment"
+license: MIT
+# preferred-citation: fill in venue/year/DOI once the RoR paper is posted or accepted.
+# The companion analysis this builds on:
+references:
+  - type: article
+    title: "How Much of the Routing Gap Is Real? Decomposing the Router-to-Oracle Gap into Reproducible Specialist Advantage and Single-Draw Label Noise"
+    authors:
+      - family-names: Chen
+        given-names: Teng-Ruei
+    year: 2026
+    doi: "10.48550/arXiv.2607.03436"
+    url: "https://arxiv.org/abs/2607.03436"

@@ -1,0 +1,140 @@
+"""REAL (deployable) verifier for the CODE benchmark: base tests as the verifier.
+
+For HumanEval+ the natural deployable verifier is a partial test suite: the
+original HumanEval base tests are VISIBLE in the prompt (weak, gameable), while
+the full EvalPlus suite is the held-out TRUTH. We replay RoR and best-of-K where
+
+  * a drawn sample is "verified" (accept -> stop) iff it passes the BASE tests
+    (b_base == 1);
+  * final correctness is scored against the FULL EvalPlus suite (b, the truth).
+
+Contrast with the agreement verifier used for the exact-match benchmarks: base
+tests give an almost-reliable signal here (measured false-accept ~1%), so unlike
+GPQA's MCQ-agreement (which reverses), RoR under a real code verifier nearly
+matches its perfect-verifier ceiling. Emits results/real_verifier_code.csv +
+../paper_canonical/tab_realverifier_code.tex.
+"""
+import csv
+import os
+
+import numpy as np
+
+from data import load_bench
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PAPER = os.path.join(HERE, "..", "paper_canonical")
+RES = os.path.join(HERE, "results")
+ARTIF = os.path.join(HERE, "..", "..", "routing-oracle", "routing-oracle-experiment",
+                     "artifacts", "humanevalplus")
+TRIALS, SEED = 20, 0
+BUDGETS = [26.0, 58.0]
+PRIOR_S = 2.0
+
+
+def replay(bf, bb, costs, budget, order, p_glob, oracle=False):
+    """RoR replay. Verifier = base tests (bb) unless oracle=True (uses truth bf).
+    Returns (correct_by_truth, cost)."""
+    M, k = bf.shape
+    ptr = [0] * M
+    succ = np.zeros(M); n = np.zeros(M)
+    cost = 0.0
+    last_truth = np.full(M, -1)
+    while True:
+        affordable = [m for m in range(M) if ptr[m] < k and cost + costs[m] <= budget + 1e-9]
+        if not affordable:
+            break
+        phat = (PRIOR_S * p_glob + succ) / (PRIOR_S + n)
+        score = phat / costs
+        m = max(affordable, key=lambda mm: score[mm])
+        d = order[m][ptr[m]]; ptr[m] += 1; cost += costs[m]
+        verified = int(bf[m, d]) if oracle else int(bb[m, d])
+        truth = int(bf[m, d])
+        n[m] += 1; succ[m] += verified; last_truth[m] = truth
+        if verified == 1:                     # verifier accepts -> commit this answer
+            return truth, cost
+    # no accept within budget: output the highest-belief drawn model's last sample
+    drawn = [m for m in range(M) if n[m] > 0]
+    if not drawn:
+        return 0, cost
+    phat = (PRIOR_S * p_glob + succ) / (PRIOR_S + n)
+    m = max(drawn, key=lambda mm: phat[mm])
+    return int(max(last_truth[m], 0)), cost
+
+
+def bok_replay(bf, bb, costs, budget, order, p_glob, oracle=False):
+    """Budget-aware best-of-K on one pre-chosen model, base-verified early stop."""
+    K = np.floor(budget / costs).astype(int)
+    exp = np.where(K >= 1, 1.0 - (1.0 - p_glob) ** np.maximum(K, 1), -1.0)
+    m = int(np.argmax(exp))
+    cost = 0.0; last_truth = -1
+    for j in range(min(K[m], bf.shape[1])):
+        if cost + costs[m] > budget + 1e-9:
+            break
+        d = order[m][j]; cost += costs[m]
+        verified = int(bf[m, d]) if oracle else int(bb[m, d])
+        last_truth = int(bf[m, d])
+        if verified == 1:
+            return int(bf[m, d]), cost
+    return int(max(last_truth, 0)), cost
+
+
+def main():
+    d = load_bench("humanevalplus")
+    b, costs, N = d["b"], d["costs"], d["N"]
+    bb = np.load(os.path.join(ARTIF, "b_base.npz"), allow_pickle=True)["b_base"]
+    idx = np.random.default_rng(SEED).permutation(N)
+    tr, te = idx[: N // 2], idx[N // 2:]
+    p_glob = b[tr].mean(axis=(0, 2))
+    M, k = b.shape[1], b.shape[2]
+
+    rows = []
+    configs = [("RoR (base-verifier)", replay, False),
+               ("RoR (oracle ceiling)", replay, True),
+               ("best-of-K (base-verifier)", bok_replay, False)]
+    for B in BUDGETS:
+        for name, fn, oracle in configs:
+            accs, cs = [], []
+            for t in range(TRIALS):
+                trng = np.random.default_rng(SEED * 100003 + t)
+                for i in te:
+                    order = [trng.permutation(k) for _ in range(M)]
+                    correct, cost = fn(b[i], bb[i], costs, B, order, p_glob, oracle=oracle)
+                    accs.append(correct); cs.append(cost)
+            rows.append(dict(budget=B, policy=name,
+                             accuracy=float(np.mean(accs)), mean_cost=float(np.mean(cs))))
+            print(f"B={B:.0f}  {name:28s} acc={np.mean(accs):.3f}  cost={np.mean(cs):.1f}")
+
+    fa = float(((bb == 1) & (b == 0)).sum() / max((bb == 1).sum(), 1))
+    print(f"\nbase-verifier false-accept rate = {fa*100:.1f}%")
+
+    with open(os.path.join(RES, "real_verifier_code.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["budget", "policy", "accuracy", "mean_cost"])
+        w.writeheader(); w.writerows(rows)
+
+    def cell(B, pol, key):
+        return next((r[key] for r in rows if r["budget"] == B and r["policy"] == pol), None)
+    lines = [
+        "% AUTO-GENERATED by experiments/run_real_verifier_code.py -- do not hand-edit.",
+        "\\begin{table}[t]\\centering",
+        "\\caption{HumanEval+ with a \\emph{deployable} code verifier: the in-prompt base"
+        " tests gate early-stopping (weak, gameable), the full EvalPlus suite is truth."
+        " Measured base-verifier false-accept rate " + f"{fa*100:.1f}\\%"
+        "; RoR under this real verifier nearly matches its perfect-verifier ceiling"
+        " (mean over 20 orderings).}",
+        "\\label{tab:realverifier-code}",
+        "\\resizebox{\\columnwidth}{!}{%",
+        "\\begin{tabular}{lcccc}\\toprule",
+        " & \\multicolumn{2}{c}{$B=26$} & \\multicolumn{2}{c}{$B=58$} \\\\",
+        "Policy & acc & cost & acc & cost \\\\ \\midrule",
+    ]
+    for name, _, _ in configs:
+        row = [name] + [f"{cell(B,name,'accuracy'):.3f}" if k2 == 0 else f"{cell(B,name,'mean_cost'):.1f}"
+                        for B in BUDGETS for k2 in (0, 1)]
+        lines.append(" & ".join(row) + " \\\\")
+    lines += ["\\bottomrule\\end{tabular}}\\end{table}"]
+    open(os.path.join(PAPER, "tab_realverifier_code.tex"), "w").write("\n".join(lines) + "\n")
+    print("wrote tab_realverifier_code.tex")
+
+
+if __name__ == "__main__":
+    main()

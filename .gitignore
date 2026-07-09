@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data_full/
+results/
+figures/
+*.pdf
+.DS_Store
