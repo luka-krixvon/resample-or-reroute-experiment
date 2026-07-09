@@ -7,10 +7,6 @@ authors:
     given-names: Teng-Ruei
     affiliation: "Institute of Bioinformatics and Systems Biology, National Yang Ming Chiao Tung University, Hsinchu 300, Taiwan; and Krixvon AI, Taiwan"
     email: luka@krixvon.com
-  - family-names: Lin
-    given-names: Chun-Cheng
-    affiliation: "Department of Industrial Engineering and Management, National Yang Ming Chiao Tung University, Hsinchu, Taiwan"
-    email: cclin321@nycu.edu.tw
 repository-code: "https://github.com/luka-krixvon/resample-or-reroute-experiment"
 license: MIT
 # preferred-citation: fill in venue/year/DOI once the RoR paper is posted or accepted.

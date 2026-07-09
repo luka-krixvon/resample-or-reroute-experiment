@@ -15,127 +15,112 @@
 > on precomputed multi-draw correctness tensors: no model inference, no closed
 > endpoint.
 >
-> **The question in one line.** Given a fixed per-query cost budget and an
-> *imperfect* verifier — the conditions a real serving system actually faces —
-> should the system **resample** the model it already committed to, or
-> **reroute** to a different (possibly costlier) one? This repo measures how a
-> policy that decides this *per query* compares against the standard baselines,
-> and is honest about where the advantage holds and where it doesn't.
+> **The question.** Given a fixed per-query cost budget and an *imperfect*
+> verifier — the conditions a real serving system actually faces — should the
+> system **resample** the model it already committed to, or **reroute** to a
+> different (possibly costlier) one? This code measures how a policy that decides
+> this *per query* compares against the standard baselines, and is explicit about
+> where its advantage holds and where it does not.
+
+<p align="center"><img src="figures/fig_pareto.png" width="92%" alt="Cost–quality Pareto fronts on four benchmarks"></p>
+
+*Cost–quality Pareto fronts on the four regenerated pools (perfect verifier;
+mean over 20 draw orderings). The policy (blue) dominates or matches every
+budget-scalable baseline on GSM8K, MATH-500, and GPQA; on the near-saturated
+HumanEval+ it leads at low budget but converges with cascade and random
+allocation at high budget. The amber dashed line is the non-deployable
+oracle-allocation ceiling.*
+
+---
 
 ## TL;DR
-- **RoR** spends each unit of budget on whichever action — one more draw of the
-  committed model, or the first draw of a new one — has the highest **estimated
-  marginal correctness per unit cost**.
-- Across **four benchmarks** (GSM8K, MATH-500, GPQA-Diamond, HumanEval+) with an
-  **11-model open-weight pool**, RoR traces a **favorable cost–quality Pareto
-  front** against single-route, one-commit-router, budget-aware best-of-$K$,
-  cascade, and random allocation.
-- The win is **regime-dependent** and **verifier-gated** — and we mark exactly
-  where it shrinks, inverts, or is matched by simpler baselines (see *Results*).
 
-## The question — why this exists (前因)
-Model **routing** sends each query to the cheapest model that can answer it,
-motivated by the large reported gap between a deployed router and a per-instance
-*oracle* that, in hindsight, always picks a correct model. The companion
-analysis ([arXiv:2607.03436](https://arxiv.org/abs/2607.03436)) shows two things:
-(1) part of that gap is **single-draw label noise** that no single-commit router
-can capture; and (2) the *recoverable* part can be reached **without any router**
-— by test-time **resampling** (best-of-$K$ on one model) — but only under an
-idealized oracle equipped with correctness labels and an unbounded budget.
+Test-time compute is usually spent bluntly: the same budget on every query, the
+same model on every problem. **Resample-or-Reroute (RoR)** spends each unit of
+budget on whichever action — one more draw of the committed model, or the first
+draw of a new one — has the highest **estimated marginal correctness per unit
+cost**. Both actions are scored on one axis, which is what makes them competing
+uses of a single per-query budget.
 
-A deployed system has neither. It has a **fixed per-query budget** and an
-**imperfect verifier**. That leaves the operational choice this repo studies:
-spend the next unit of budget **resampling** the committed model, or
-**rerouting** to another?
-
-## The policy — how RoR decides (方法)
-For the current query, RoR keeps a running estimate of each model's success
-probability, $\hat p = (s\bar p + w)/(s + n)$ (prior mean $\bar p$ from offline
-calibration; $w$ verified-correct out of $n$ draws so far), and each step takes
-the affordable action that maximizes $\hat p / \text{cost}$ — resample a used
-model, or try a new one. Both actions are scored on **one axis**, which is what
-makes them competing uses of a single budget. The behavior is grounded in the
-**recoverability asymmetry** the companion proves (a UCB variant and a
-non-deployable oracle-allocation ceiling are included for reference).
-
-## Results
 Accuracy at a matched mid budget (point nearest mean cost 26; cost =
-parameter-size proxy; `acc` shown, with RoR's mean cost where informative):
+parameter-size proxy):
 
-| Policy | GSM8K | MATH-500 | GPQA | HumanEval+ |
-|---|---|---|---|---|
-| **Resample-or-Reroute (ours)** | **0.993** @9.2 | **0.887** @26.4 | **0.968** @25.9 | 0.952 @20.5 |
+| Policy | GSM8K | MATH-500 | GPQA-Diamond | HumanEval+ |
+|---|---:|---:|---:|---:|
+| **Resample-or-Reroute (ours)** | **0.993** | **0.887** | **0.968** | 0.952 |
 | budget-aware best-of-$K$ | 0.983 | 0.867 | 0.861 | 0.852 |
 | cascade (FrugalGPT-style) | 0.992 | 0.847 | 0.926 | 0.952 |
 | random allocation | 0.992 | 0.846 | 0.706 | 0.959 |
-| single-route (best model) | 0.966 @32 | 0.776 @32 | 0.551 @8 | 0.858 @32 |
+| single-route (best model) | 0.966 | 0.776 | 0.551 | 0.858 |
 | oracle allocation (ceiling) | 1.000 | 0.944 | 1.000 | 0.988 |
 
-**1 — A favorable Pareto front.** RoR dominates or matches every budget-scalable
-baseline and overtakes the single-commit baselines once the budget affords a
-second draw.
+Evidence: **11 open-weight models, 8 pretraining lineages**, `k = 30`
+seed-aligned draws per cell at `T = 0.2`, over four benchmarks of differing
+difficulty (GSM8K, MATH-500, GPQA-Diamond, HumanEval+), replayed under a swept
+per-query budget and a parametric-to-real verifier.
 
-**2 — Where it wins depends on the pool.** On **saturated** GSM8K the win is
-*cost*: 0.993 at 24–34% lower cost than cascade / best-of-$K$, and 3.5× cheaper
-than single-routing the best model. On **heterogeneous** GPQA-Diamond, where the
-pool's specialists genuinely differ, *rerouting* matters most — **+10.7 accuracy
-points** over best-of-$K$ at matched cost. On **code** (HumanEval+) it matches
-the best single model's fixed-budget accuracy at **~3.2× lower cost** in the
-low-budget regime.
+---
 
-**3 — The gains are verifier-gated (the honest part).** They shrink as the
-verifier degrades, and can **invert** on low-signal verifiers — e.g. self-
-consistency on 4-way multiple choice (GPQA), where two wrong draws easily agree.
-Where a real *partial* verifier exists — base-test suites for code, measured
-false-accept ~1% — RoR stays essentially at its perfect-verifier ceiling. And on
-near-saturated benchmarks under a reliable verifier, undirected baselines
-(cascade, random) **converge to RoR at high budget** (see the HumanEval+ column
-above): RoR's edge lives in the cost-constrained middle, not in a high-budget
-ceiling. Robustness replays under a real provider price vector and a label-free
-agreement verifier delineate where these conclusions carry over.
+## Result 1 — A favorable cost–quality Pareto front
 
-## Data
-Replays read the correctness tensors produced by the sibling repo
-**[routing-oracle-experiment](https://github.com/luka-krixvon/routing-oracle-experiment)**:
-`artifacts/<bench>/correctness_slim.npz` for `bench ∈ {gsm8k, math500, gpqa, humanevalplus}`
-(each an `(N, M, k)` int8 tensor: N queries × M=11 models × k=30 seed-aligned draws at T=0.2).
-By default `data.py` looks in `../../routing-oracle/routing-oracle-experiment/artifacts`;
-clone the two repos as siblings, or pass `--root <path>`.
+RoR dominates or matches every budget-scalable baseline across budgets, and
+overtakes the single-commit baselines (router, single-route) once the budget
+affords a second draw. On the most heterogeneous benchmark (GPQA-Diamond) the
+front is highest — the regime where choosing *which* cheap model succeeds is
+worth more than blind additional budget. See the figure above.
 
-## Generation environment
-The correctness tensors were produced by the sibling repo's protocol — serving
-the 11-model pool under `vLLM` at `T=0.2` on the hardware and NVIDIA CUDA stack
-below (one model resident at a time; weights evicted between models). **The RoR
-replay in _this_ repo is CPU-only** and needs none of it. Values are the audited
-runtime recorded by `scripts/detect_environment.py` in the sibling repo.
+## Result 2 — Where the win comes from depends on the pool
 
-| Component | Value |
-|---|---|
-| CPU | AMD EPYC 7J13, 24 vCPUs |
-| RAM | 64 GB |
-| GPU | 2× NVIDIA GeForce RTX 4090, 24 GB each (Ada Lovelace, cc 8.9) |
-| OS | Ubuntu 24.04 LTS (kernel 6.8) |
-| NVIDIA driver | 580.159.03 |
-| CUDA toolkit / runtime | 13.0 (NVCC 13.2, NVRTC 13.0) |
-| NVIDIA math libraries | cuBLAS 13.1, cuDNN 9.19, cuSPARSELt 0.8 |
-| NVIDIA communication | NCCL 2.28.9, NVSHMEM 3.4.5 |
-| CUDA attention kernels | CUTLASS 4.5, FlashInfer 0.6.12 (vLLM backend) |
-| Framework | PyTorch 2.11.0, vLLM 0.23.0, Transformers 5.12.1 |
+- **Saturated (GSM8K)** — the win is *cost*: 0.993 at 24–34% lower cost than
+  cascade / best-of-$K$, and 3.5× cheaper than single-routing the best model.
+- **Intermediate (MATH-500)** — 2.1 points above the strongest baseline at
+  matched cost, 10 points above the one-commit router at 18% lower cost.
+- **Heterogeneous (GPQA-Diamond)** — where specialists genuinely differ,
+  *rerouting* matters most: **+10.7 points** over best-of-$K$ at matched cost.
+- **Code (HumanEval+)** — matches the best single model's fixed-budget accuracy
+  at **~3.2× lower cost** in the low-budget regime.
 
-<sub>Also installed as CUDA-13 build dependencies (via `pip`, pulled by the PyTorch/vLLM build): cuFFT, cuRAND, cuSOLVER, cuSPARSE, cuPTI, nvJitLink, NVVM, NVTX, cuFile, nvidia-ml-py.</sub>
+## Result 3 — The gains are verifier-gated (the honest part)
 
-## Run
-```bash
-python run_pareto.py --bench humanevalplus            # cost–quality Pareto (verifier q via --quality 1.0/0.8/0.6)
-python run_ablations.py                               # prior-strength / split sensitivity + ordering stability
-python run_real_costs.py                              # replay under real OpenRouter output prices
-python run_real_verifier.py                           # deployable verifier: agreement / self-consistency
-python run_real_verifier_code.py                      # deployable verifier for code: base HumanEval tests
-python run_latency.py                                 # sequential round-trip (latency) proxy
-python make_paper_assets.py                           # regenerate the paper's main tables + figures
-```
-Outputs land in `results/*.csv` and `figures/*.pdf` (git-ignored); the LaTeX
-tables/figures are written into the paper source tree.
+<p align="center"><img src="figures/fig_verifier.png" width="55%" alt="Policy accuracy vs. verifier quality"></p>
+
+*Policy accuracy at matched mid budget as the verifier degrades from perfect
+(`q = 1`) toward a random pick over drawn samples. The largest gains
+(GPQA-Diamond) degrade the fastest.*
+
+The advantage shrinks as the verifier degrades and can **invert** on low-signal
+verifiers — e.g. self-consistency on 4-way multiple choice (GPQA), where two
+wrong draws easily agree. Where a real *partial* verifier exists — base-test
+suites for code, measured false-accept ~1% — RoR stays essentially at its
+perfect-verifier ceiling. And on near-saturated benchmarks under a reliable
+verifier, undirected baselines (cascade, random) **converge to RoR at high
+budget** (the HumanEval+ column above). RoR's edge lives in the cost-constrained
+middle, not in a high-budget ceiling. Robustness replays under a real provider
+price vector and a label-free agreement verifier delineate where these
+conclusions carry over.
+
+## Why it works
+
+Selection and sampling are asymmetric. Any single-commit router is capped at the
+reproducible ceiling `O^repro`, but test-time sampling on the committed model
+recovers headroom above it — the *recoverability asymmetry* the companion
+analysis proves. RoR turns that into an online rule: keep a per-query estimate
+`p̂ = (s·p̄ + w) / (s + n)` for each model (prior mean `p̄` from offline
+calibration; `w` verified-correct of `n` draws), and each step take the
+affordable action maximizing `p̂ / cost`. When the committed model's
+reproducible success is high, resampling wins the ratio; when the pool holds a
+better specialist, rerouting does — a single rule that captures both.
+
+## How the replay works
+
+Policies are replayed **offline** on the released correctness tensors: “sample
+from model `m`” consumes one of its `k` precomputed draws (without replacement,
+order randomized per trial). Queries are split 50/50; per-model priors and the
+best single model are calibrated on the train half; results are reported on the
+test half, averaged over 20 draw orderings, sweeping the per-query budget. The
+replay is exact for correctness-based rewards under the companion protocol's
+seed-aligned generation, runs on **CPU only**, and reproduces every reported
+number without model inference.
 
 ## Repository layout
 ```
@@ -152,12 +137,74 @@ make_paper_assets.py       # tables + figures for the paper
 gen_code_tensor.py         # (helper) code-benchmark generation, GPU — mirrors the sibling repo's runner
 ```
 
+## Install
+```bash
+pip install -r requirements.txt          # CPU-only; NumPy + a plotting stack, no GPU/vLLM needed for the replay
+```
+
+## Reproduce (fast — CPU, no GPU)
+```bash
+python run_pareto.py --bench humanevalplus            # cost–quality Pareto (verifier q via --quality 1.0/0.8/0.6)
+python run_ablations.py                               # prior-strength / split sensitivity + ordering stability
+python run_real_costs.py                              # replay under real OpenRouter output prices
+python run_real_verifier.py                           # deployable verifier: agreement / self-consistency
+python run_real_verifier_code.py                      # deployable verifier for code: base HumanEval tests
+python run_latency.py                                 # sequential round-trip (latency) proxy
+python make_paper_assets.py                           # regenerate the paper's main tables + figures
+```
+Outputs land in `results/*.csv` and `figures/*.pdf`; the LaTeX tables/figures are
+written into the paper source tree.
+
+## The model pool & data
+Replays read the correctness tensors produced by the sibling repo
+**[routing-oracle-experiment](https://github.com/luka-krixvon/routing-oracle-experiment)**:
+`artifacts/<bench>/correctness_slim.npz` for `bench ∈ {gsm8k, math500, gpqa, humanevalplus}`
+(each an `(N, M, k)` int8 tensor: N queries × M = 11 models × k = 30 seed-aligned
+draws at T = 0.2). By default `data.py` looks in
+`../../routing-oracle/routing-oracle-experiment/artifacts`; clone the two repos as
+siblings, or pass `--root <path>`. The pool spans 8 pretraining lineages
+(Mistral, Qwen2.5-{7,14,32}B, a Qwen-based DeepSeek-R1 distill, Phi-4, OLMo-2,
+Yi-1.5, Granite-3.3, Gemma-2, Llama-3.1).
+
+## Generation environment
+The tensors were produced by the sibling repo's protocol — serving the pool under
+`vLLM` at `T = 0.2` on the hardware and NVIDIA CUDA stack below (one model
+resident at a time; weights evicted between models). **The replay in this repo is
+CPU-only** and needs none of it. Values are the audited runtime recorded by
+`scripts/detect_environment.py` in the sibling repo.
+
+| Component | Value |
+|---|---|
+| CPU | AMD EPYC 7J13, 24 vCPUs |
+| RAM | 64 GB |
+| GPU | 2× NVIDIA GeForce RTX 4090, 24 GB each (Ada Lovelace, cc 8.9) |
+| OS | Ubuntu 24.04 LTS (kernel 6.8) |
+| NVIDIA driver | 580.159.03 |
+| CUDA toolkit / runtime | 13.0 (NVCC 13.2, NVRTC 13.0) |
+| NVIDIA math libraries | cuBLAS 13.1, cuDNN 9.19, cuSPARSELt 0.8 |
+| NVIDIA communication | NCCL 2.28.9, NVSHMEM 3.4.5 |
+| CUDA attention kernels | CUTLASS 4.5, FlashInfer 0.6.12 (vLLM backend) |
+| Framework | PyTorch 2.11.0, vLLM 0.23.0, Transformers 5.12.1 |
+
+<sub>Also installed as CUDA-13 build dependencies (via `pip`, pulled by the PyTorch/vLLM build): cuFFT, cuRAND, cuSOLVER, cuSPARSE, cuPTI, nvJitLink, NVVM, NVTX, cuFile, nvidia-ml-py.</sub>
+
+## What is *not* in this repository (by design)
+- **Model weights and the generation run.** Producing the correctness tensors
+  (GPU, vLLM) lives in the sibling repo; this repo is the CPU replay on the
+  released tensors, so anyone can rerun the decision logic without a GPU.
+- **Closed-model endpoints / API calls.** Recovering per-cell correctness needs
+  seed-pinned open-weight generation at a fixed temperature — hence open weights
+  and **no API key**.
+- **A latency-optimized production server.** Every experiment is an offline
+  replay; batched and latency-constrained serving is left to future work (a
+  round-trip proxy is included in `run_latency.py`).
+
 ## Map to the paper
 | Paper element | Where |
 |---|---|
-| RoR policy + belief update ($\hat p=(s\bar p+w)/(s+n)$) | `policies.py` (`resample_or_reroute`) |
+| RoR policy + belief update (`p̂ = (s·p̄ + w)/(s + n)`) | `policies.py` (`resample_or_reroute`) |
 | Cost–quality Pareto (Table + Fig.) | `run_pareto.py`, `make_paper_assets.py` |
-| Verifier-quality ablation (q=1.0/0.8/0.6) | `run_pareto.py --quality`, `make_paper_assets.py` |
+| Verifier-quality ablation (q = 1.0 / 0.8 / 0.6) | `run_pareto.py --quality`, `make_paper_assets.py` |
 | Sensitivity / stability | `run_ablations.py` |
 | Real-price replay | `run_real_costs.py` |
 | Real verifier — agreement (exact-match) / base tests (code) | `run_real_verifier.py` / `run_real_verifier_code.py` |
@@ -165,18 +212,7 @@ gen_code_tensor.py         # (helper) code-benchmark generation, GPU — mirrors
 
 ## Citation
 See [`CITATION.cff`](CITATION.cff). The RoR preprint is forthcoming; meanwhile
-please cite the companion analysis this builds on:
-
-```bibtex
-@article{chen2026routinggap,
-  title   = {How Much of the Routing Gap Is Real? Decomposing the Router-to-Oracle
-             Gap into Reproducible Specialist Advantage and Single-Draw Label Noise},
-  author  = {Chen, Teng-Ruei},
-  journal = {arXiv preprint arXiv:2607.03436},
-  year    = {2026},
-  url     = {https://arxiv.org/abs/2607.03436}
-}
-```
+please cite the companion analysis this builds on (arXiv:2607.03436).
 
 ## License
-[MIT](LICENSE). © 2026 Teng-Ruei Chen, Chun-Cheng Lin.
+[MIT](LICENSE). © 2026 Teng-Ruei Chen.
