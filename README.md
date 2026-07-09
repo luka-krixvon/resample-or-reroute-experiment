@@ -2,6 +2,8 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+![Serving](https://img.shields.io/badge/serving-vLLM-orange.svg)
+![Hardware](https://img.shields.io/badge/generation-2%C3%97%20RTX%204090-lightgrey.svg)
 ![Replay](https://img.shields.io/badge/replay-CPU%20only-brightgreen.svg)
 ![No API key](https://img.shields.io/badge/API%20key-not%20required-brightgreen.svg)
 <!-- preprint/venue badge — add once the RoR paper is posted/accepted:
@@ -25,6 +27,28 @@ Replays read the correctness tensors produced by the sibling repo
 (each an `(N, M, k)` int8 tensor: N queries × M=11 models × k=30 seed-aligned draws at T=0.2).
 By default `data.py` looks in `../../routing-oracle/routing-oracle-experiment/artifacts`;
 clone the two repos as siblings, or pass `--root <path>`.
+
+## Generation environment
+The correctness tensors were produced by the sibling repo's protocol — serving
+the 11-model pool under `vLLM` at `T=0.2` on the hardware and NVIDIA CUDA stack
+below (one model resident at a time; weights evicted between models). **The RoR
+replay in _this_ repo is CPU-only** and needs none of it. Values are the audited
+runtime recorded by `scripts/detect_environment.py` in the sibling repo.
+
+| Component | Value |
+|---|---|
+| CPU | AMD EPYC 7J13, 24 vCPUs |
+| RAM | 64 GB |
+| GPU | 2× NVIDIA GeForce RTX 4090, 24 GB each (Ada Lovelace, cc 8.9) |
+| OS | Ubuntu 24.04 LTS (kernel 6.8) |
+| NVIDIA driver | 580.159.03 |
+| CUDA toolkit / runtime | 13.0 (NVCC 13.2, NVRTC 13.0) |
+| NVIDIA math libraries | cuBLAS 13.1, cuDNN 9.19, cuSPARSELt 0.8 |
+| NVIDIA communication | NCCL 2.28.9, NVSHMEM 3.4.5 |
+| CUDA attention kernels | CUTLASS 4.5, FlashInfer 0.6.12 (vLLM backend) |
+| Framework | PyTorch 2.11.0, vLLM 0.23.0, Transformers 5.12.1 |
+
+<sub>Also installed as CUDA-13 build dependencies (via `pip`, pulled by the PyTorch/vLLM build): cuFFT, cuRAND, cuSOLVER, cuSPARSE, cuPTI, nvJitLink, NVVM, NVTX, cuFile, nvidia-ml-py.</sub>
 
 ## Run
 ```bash
