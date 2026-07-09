@@ -111,16 +111,55 @@ affordable action maximizing `p̂ / cost`. When the committed model's
 reproducible success is high, resampling wins the ratio; when the pool holds a
 better specialist, rerouting does — a single rule that captures both.
 
-## How the replay works
+## How the pipeline works (experiment flow)
 
-Policies are replayed **offline** on the released correctness tensors: “sample
-from model `m`” consumes one of its `k` precomputed draws (without replacement,
-order randomized per trial). Queries are split 50/50; per-model priors and the
-best single model are calibrated on the train half; results are reported on the
-test half, averaged over 20 draw orderings, sweeping the per-query budget. The
-replay is exact for correctness-based rewards under the companion protocol's
-seed-aligned generation, runs on **CPU only**, and reproduces every reported
-number without model inference.
+Everything here is an **offline, CPU-only replay** on the released correctness
+tensors — no model inference. “Sample from model `m`” consumes one of its `k`
+precomputed draws (without replacement, order randomized per trial); queries are
+split 50/50, per-model priors and the best single model are calibrated on the
+train half, and every number is reported on the **test half**, averaged over 20
+draw orderings while sweeping the per-query budget. Because the draws are
+seed-aligned and correctness is 0/1, the replay is *exact* for correctness-based
+rewards.
+
+```mermaid
+flowchart TD
+    T["<b>correctness tensors</b>  b[i,m,j] ∈ {0,1}<br/>(N, M=11, k=30) per benchmark — from the sibling repo<br/><i>artifacts/&lt;bench&gt;/correctness_slim.npz</i>"] --> D["<b>data.py</b><br/>load tensors · 50/50 split · calibrate per-model priors on the train half"]
+    D --> POL["<b>policies.py</b><br/>RoR (greedy + UCB) + baselines:<br/>best-of-K · cascade · random · single-route · learned router · oracle"]
+    D --> VER["<b>verifier.py</b><br/>parametric verifier (quality q) + real verifiers<br/>(agreement / base-test suites)"]
+    POL --> RUN{"budget-swept replay<br/>(test half · 20 orderings)"}
+    VER --> RUN
+    RUN --> R1["run_pareto.py<br/>cost–quality Pareto (per q)"]
+    RUN --> R2["run_ablations.py<br/>prior/split sensitivity + q=0.6 Pareto"]
+    RUN --> R3["run_real_costs.py<br/>provider-price replay"]
+    RUN --> R4["run_real_verifier[_code].py<br/>deployable verifiers"]
+    RUN --> R5["run_latency.py<br/>sequential round-trips"]
+    R1 --> CSV["<i>results/*.csv</i>"]
+    R2 --> CSV
+    R3 --> CSV
+    R4 --> CSV
+    R5 --> CSV
+    CSV --> MK["<b>make_paper_assets.py</b><br/>matched-budget table + Pareto / verifier figures"]
+    MK --> OUT["<i>tab_*.tex + fig_*.pdf</i> (into the paper source)"]
+    classDef data fill:#eaf1f8,stroke:#3b6ea5,stroke-width:2px;
+    classDef code fill:#f6f8fa,stroke:#57606a;
+    classDef hub fill:#fdf3e7,stroke:#b46a1e;
+    class T,CSV,OUT data; class D,POL,VER,R1,R2,R3,R4,R5,MK code; class RUN hub;
+```
+
+### Stage-by-stage
+
+| Stage / file | Role | Inputs → outputs |
+|---|---|---|
+| `data.py` | load the `(N, M, k)` correctness tensors; 50/50 split; calibrate per-model priors on the train half | `artifacts/<bench>/correctness_slim.npz` → tensors + priors |
+| `policies.py` | RoR (greedy + UCB) + baselines (best-of-K, cascade, random, single-route, learned router, oracle) | tensor + budget → per-trial allocations |
+| `verifier.py` | parametric verifier (quality `q`) gating early-stopping / final selection | drawn samples → verified? |
+| `run_pareto.py` | sweep the per-query budget → cost–quality curve (per verifier `q`) | → `results/pareto_<bench>_q<q>.csv` |
+| `run_ablations.py` | prior-strength / train-split sensitivity + stability; the `q=0.6` Pareto figure | → `results/ablation_*.csv`, `fig_pareto_q06` |
+| `run_real_costs.py` | re-weight the replay by a real provider price vector | → `results/pareto_<bench>_realcost.csv` |
+| `run_real_verifier.py` · `run_real_verifier_code.py` | deployable verifiers: agreement (self-consistency) / base-test suites (code) | tensor (+ base-test tensor) → `results/*.csv` |
+| `run_latency.py` | mean sequential rounds (round-trips) per query at matched budget | → `results/latency_*.csv` |
+| `make_paper_assets.py` | assemble the matched-budget table + Pareto / verifier figures | `results/*.csv` → `tab_results.tex`, `fig_pareto`, `fig_verifier` |
 
 ## Repository layout
 ```
