@@ -21,15 +21,23 @@ def model_cost(name: str) -> float:
     """Cost proxy = parameter count in billions parsed from the model name.
 
     This is a stand-in for real $/token pricing (run_real_costs.py replays a
-    provider price vector instead). Names without an explicit size token fall
-    back to 8.0 — in the released pool this affects only microsoft/phi-4
-    (14.7B), as disclosed in the paper's Cost paragraph; all policies share
-    the same cost vector, so within-table comparisons are unaffected.
+    provider price vector instead). Names without a size token are looked up
+    in KNOWN_SIZES (e.g. microsoft/phi-4 = 14.7B); the 8.0 fallback remains
+    only for genuinely unknown models. (v1 of the preprint charged phi-4 the
+    fallback 8.0; a sensitivity rerun showed all orderings preserved.)
     """
     m = re.search(r"(\d+(?:\.\d+)?)\s*[Bb]\b", name)
     if m:
         return float(m.group(1))
-    return 8.0  # fallback for names without an explicit size (phi-4)
+    for key, size in KNOWN_SIZES.items():
+        if key in name.lower():
+            return size
+    return 8.0  # fallback for genuinely unknown model names
+
+
+KNOWN_SIZES = {
+    "phi-4": 14.7,  # microsoft/phi-4 technical report: 14.7B parameters
+}
 
 
 def load_bench(bench: str, root: str = None) -> dict:
