@@ -37,7 +37,7 @@ def compute_priors(b_train):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bench", default="math500", help="math500 | gpqa")
+    ap.add_argument("--bench", default="math500", help="gsm8k | math500 | gpqa | humanevalplus")
     ap.add_argument("--trials", type=int, default=20)
     ap.add_argument("--quality", type=float, default=1.0,
                     help="1.0 = perfect verifier + early stop (main); <1 = imperfect-verifier ablation")

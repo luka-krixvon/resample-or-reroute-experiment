@@ -20,13 +20,16 @@ DEFAULT_ROOT = os.path.join(
 def model_cost(name: str) -> float:
     """Cost proxy = parameter count in billions parsed from the model name.
 
-    This is a stand-in for real $/token pricing. Replace with a measured
-    price/latency vector before the paper's final experiments.
+    This is a stand-in for real $/token pricing (run_real_costs.py replays a
+    provider price vector instead). Names without an explicit size token fall
+    back to 8.0 — in the released pool this affects only microsoft/phi-4
+    (14.7B), as disclosed in the paper's Cost paragraph; all policies share
+    the same cost vector, so within-table comparisons are unaffected.
     """
     m = re.search(r"(\d+(?:\.\d+)?)\s*[Bb]\b", name)
     if m:
         return float(m.group(1))
-    return 8.0  # fallback for names without an explicit size
+    return 8.0  # fallback for names without an explicit size (phi-4)
 
 
 def load_bench(bench: str, root: str = None) -> dict:
@@ -34,8 +37,8 @@ def load_bench(bench: str, root: str = None) -> dict:
     path = os.path.join(root, bench, "correctness_slim.npz")
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"{path} not found. Benchmarks with a slim tensor: math500, gpqa. "
-            "(gsm8k currently ships decomposition.json only — regenerate its tensor to include it.)"
+            f"{path} not found. Benchmarks with a slim tensor: gsm8k, math500, "
+            "gpqa, humanevalplus (in the sibling routing-oracle-experiment repo's artifacts/)."
         )
     z = np.load(path, allow_pickle=True)
     meta = json.loads(str(z["meta"]))
