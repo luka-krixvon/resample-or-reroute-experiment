@@ -12,9 +12,16 @@
 > Reproducibility companion for the paper **“Resample or Reroute? Budget-Aware
 > Test-Time Model Selection for Large Language Models”**
 > ([arXiv:2607.08665](https://arxiv.org/abs/2607.08665)).
-> **Open-weight, CPU-only, no API key** — every experiment is an offline replay
-> on precomputed multi-draw correctness tensors: no model inference, no closed
-> endpoint.
+> **CPU-only replay, no API key** — every experiment *here* replays precomputed
+> multi-draw correctness tensors: no model inference, no GPU, no closed
+> endpoint. The tensors themselves were generated **once, on GPUs** — see
+> [Generation environment](#generation-environment).
+>
+> **Built on.** The companion analysis **“How Much of the Routing Gap Is
+> Real?”** ([arXiv:2607.03436](https://arxiv.org/abs/2607.03436)) proves the
+> recoverability asymmetry that RoR exploits; its repo
+> [routing-oracle-experiment](https://github.com/luka-krixvon/routing-oracle-experiment)
+> generates and releases the correctness tensors replayed here.
 >
 > **The question.** Given a fixed per-query cost budget and an *imperfect*
 > verifier — the conditions a real serving system actually faces — should the
