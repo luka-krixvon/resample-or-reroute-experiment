@@ -55,10 +55,10 @@ parameter-size proxy):
 
 | Policy | GSM8K | MATH-500 | GPQA-Diamond | HumanEval+ |
 |---|---:|---:|---:|---:|
-| **Resample-or-Reroute (ours)** | **0.993** | **0.887** | **0.968** | 0.952 |
-| budget-aware best-of-$K$ | 0.983 | 0.867 | 0.861 | 0.852 |
-| cascade (FrugalGPT-style) | 0.992 | 0.847 | 0.926 | 0.952 |
-| random allocation | 0.992 | 0.846 | 0.706 | 0.959 |
+| **Resample-or-Reroute (ours)** | **0.993** | **0.877** | **0.892** | **0.962** |
+| budget-aware best-of-$K$ | 0.983 | 0.850 | 0.644 | 0.852 |
+| cascade (FrugalGPT-style) | 0.992 | 0.812 | 0.872 | 0.952 |
+| random allocation | 0.992 | 0.818 | 0.693 | 0.952 |
 | single-route (best model) | 0.966 | 0.776 | 0.551 | 0.858 |
 | oracle allocation (ceiling) | 1.000 | 0.944 | 1.000 | 0.988 |
 
@@ -79,14 +79,16 @@ worth more than blind additional budget. See the figure above.
 
 ## Result 2 — Where the win comes from depends on the pool
 
-- **Saturated (GSM8K)** — the win is *cost*: 0.993 at 24–34% lower cost than
-  cascade / best-of-$K$, and 3.5× cheaper than single-routing the best model.
-- **Intermediate (MATH-500)** — 2.1 points above the strongest baseline at
-  matched cost, 10 points above the one-commit router at 18% lower cost.
+- **Saturated (GSM8K)** — the win is *cost*: 0.993 at 22–31% lower cost than
+  cascade / best-of-$K$, and 3.3× cheaper than single-routing the best model.
+- **Intermediate (MATH-500)** — 2.7 points above the strongest baseline at
+  matched cost, 9.3 points above the one-commit router at 17% lower cost.
 - **Heterogeneous (GPQA-Diamond)** — where specialists genuinely differ,
-  *rerouting* matters most: **+10.7 points** over best-of-$K$ at matched cost.
+  *rerouting* matters most: **+24.8 points** over the resample-only
+  best-of-$K$ at matched cost (the cascade, which also moves across models,
+  is the closest baseline at +2.1).
 - **Code (HumanEval+)** — matches the best single model's fixed-budget accuracy
-  at **~3.2× lower cost** in the low-budget regime.
+  at **~3.1× lower cost** in the low-budget regime.
 
 ## Result 3 — The gains are verifier-gated (the honest part)
 
@@ -101,8 +103,8 @@ verifiers — e.g. self-consistency on 4-way multiple choice (GPQA), where two
 wrong draws easily agree. Where a real *partial* verifier exists — base-test
 suites for code, measured false-accept ~1% — RoR stays essentially at its
 perfect-verifier ceiling. And on near-saturated benchmarks under a reliable
-verifier, undirected baselines (cascade, random) **converge to RoR at high
-budget** (the HumanEval+ column above). RoR's edge lives in the cost-constrained
+verifier, undirected baselines (cascade, random) **converge toward RoR at high
+budget** (though no longer exceeding it). RoR's edge lives in the cost-constrained
 middle, not in a high-budget ceiling. Robustness replays under a real provider
 price vector and a label-free agreement verifier delineate where these
 conclusions carry over.
