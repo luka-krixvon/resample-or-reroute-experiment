@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this code, please cite the RoR paper (preprint forthcoming); meanwhile cite the companion analysis (arXiv:2607.03436)."
+message: "If you use this code, please cite the RoR paper (arXiv:2607.08665)."
 title: "Resample or Reroute? Budget-Aware Test-Time Model Selection for Large Language Models"
 type: software
 authors:
@@ -8,8 +8,19 @@ authors:
     affiliation: "Institute of Bioinformatics and Systems Biology, National Yang Ming Chiao Tung University, Hsinchu 300, Taiwan; and Krixvon AI, Taiwan"
     email: luka@krixvon.com
 repository-code: "https://github.com/luka-krixvon/resample-or-reroute-experiment"
+url: "https://arxiv.org/abs/2607.08665"
 license: MIT
-# preferred-citation: fill in venue/year/DOI once the RoR paper is posted or accepted.
+preferred-citation:
+  type: article
+  title: "Resample or Reroute? Budget-Aware Test-Time Model Selection for Large Language Models"
+  authors:
+    - family-names: Chen
+      given-names: Teng-Ruei
+  year: 2026
+  month: 7
+  journal: "arXiv preprint"
+  doi: "10.48550/arXiv.2607.08665"
+  url: "https://arxiv.org/abs/2607.08665"
 # The companion analysis this builds on:
 references:
   - type: article

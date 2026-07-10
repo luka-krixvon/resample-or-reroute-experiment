@@ -6,11 +6,12 @@
 ![Hardware](https://img.shields.io/badge/generation-2%C3%97%20RTX%204090-lightgrey.svg)
 ![Replay](https://img.shields.io/badge/replay-CPU%20only-brightgreen.svg)
 ![No API key](https://img.shields.io/badge/API%20key-not%20required-brightgreen.svg)
-<!-- preprint/venue badge — add once the RoR paper is posted/accepted:
-     [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX) -->
+[![arXiv](https://img.shields.io/badge/arXiv-2607.08665-b31b1b.svg)](https://arxiv.org/abs/2607.08665)
+<!-- venue badge — add once accepted at a journal -->
 
 > Reproducibility companion for the paper **“Resample or Reroute? Budget-Aware
-> Test-Time Model Selection for Large Language Models”** (preprint forthcoming).
+> Test-Time Model Selection for Large Language Models”**
+> ([arXiv:2607.08665](https://arxiv.org/abs/2607.08665)).
 > **Open-weight, CPU-only, no API key** — every experiment is an offline replay
 > on precomputed multi-draw correctness tensors: no model inference, no closed
 > endpoint.
@@ -250,8 +251,21 @@ CPU-only** and needs none of it. Values are the audited runtime recorded by
 | Latency (round-trips) | `run_latency.py` |
 
 ## Citation
-See [`CITATION.cff`](CITATION.cff). The RoR preprint is forthcoming; meanwhile
-please cite the companion analysis this builds on (arXiv:2607.03436).
+See [`CITATION.cff`](CITATION.cff).
+
+```bibtex
+@article{chen2026ror,
+  title   = {Resample or Reroute? Budget-Aware Test-Time Model Selection
+             for Large Language Models},
+  author  = {Chen, Teng-Ruei},
+  journal = {arXiv preprint arXiv:2607.08665},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2607.08665}
+}
+```
+
+If you use the correctness tensors, please also cite the companion analysis
+that defines the generation protocol (arXiv:2607.03436).
 
 ## License
 [MIT](LICENSE). © 2026 Teng-Ruei Chen.
